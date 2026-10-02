@@ -1,0 +1,17 @@
+# Mortgage Automator API credentials
+# Fill these in with your real values, then save this file.
+
+# The base API URL for your account. Mortgage Automator's docs use {ENDPOINT}
+# as a placeholder - your real value is shown when you're logged into your
+# MA account under the API docs page (it usually looks like
+# https://app.mortgageautomator.com/api or a similar account-specific URL).
+MA_ENDPOINT=https://app.mortgageautomator.com/api
+
+# Your Lender API account ID (also called ACCOUNT-ID / lender_id)
+MA_ACCOUNT_ID=2371
+# Your Lender API key (the shared secret - never shared directly in requests,
+# only used to compute the auth token)
+MA_API_KEY=ZNya5mWAcPwchzXv
+
+# Optional: port the dashboard runs on locally
+PORT=5000

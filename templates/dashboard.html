@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portfolio Overview</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --page:      #f9f9f7;
+    --card:      #fcfcfb;
+    --border:    rgba(11,11,11,0.10);
+    --text:      #0b0b0b;
+    --text-2:    #52514e;
+    --muted:     #898781;
+    --gridline:  #e1e0d9;
+    --series-1:  #2a78d6; /* blue */
+    --series-2:  #eb6834; /* orange */
+    --navy:      #1f2a44; /* count-measure accent, close to the source dashboard's bar color */
+    --good:      #0ca30c;
+    --critical:  #d03b3b;
+    --critical-bg: #fef2f2;
+    --critical-border: #fecaca;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page:      #0d0d0d;
+      --card:      #1a1a19;
+      --border:    rgba(255,255,255,0.10);
+      --text:      #ffffff;
+      --text-2:    #c3c2b7;
+      --muted:     #898781;
+      --gridline:  #2c2c2a;
+      --series-1:  #3987e5;
+      --series-2:  #d95926;
+      --navy:      #6f89bd;
+      --good:      #0ca30c;
+      --critical:  #e66767;
+      --critical-bg: rgba(224,103,103,0.12);
+      --critical-border: rgba(224,103,103,0.35);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--page);
+    margin: 0;
+    color: var(--text);
+  }
+
+  /* Top brand bar - logo mark, nav tabs, refresh */
+  .topbar {
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 28px;
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .brand-logo { height: 56px; width: auto; display: block; }
+  .topbar-tabs { display: flex; gap: 2px; flex: 1; }
+  .topbar-tabs .tab-btn { font-size: 13px; padding: 7px 12px; }
+  .topbar-right { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+  .topbar .sub { color: var(--muted); font-size: 12px; }
+
+  button.refresh {
+    background: var(--series-1);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+  button.refresh:hover { opacity: 0.9; }
+  button.refresh:disabled { opacity: 0.6; cursor: default; }
+
+  main { padding: 20px 28px 60px; max-width: 1500px; margin: 0 auto; }
+  .page-title { margin-bottom: 18px; }
+  .page-title h1 { font-size: 19px; margin: 0; }
+  .page-title .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+
+  .error-box {
+    background: var(--critical-bg); border: 1px solid var(--critical-border); color: var(--critical);
+    padding: 16px; border-radius: 8px; margin-bottom: 20px; white-space: pre-wrap; font-size: 13px;
+  }
+  .loading-overlay {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 80px 20px; text-align: center;
+  }
+  .spinner {
+    width: 40px; height: 40px; border: 4px solid var(--gridline); border-top-color: var(--series-1);
+    border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 20px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-overlay .progress-text { font-size: 15px; color: var(--text); font-weight: 600; margin-bottom: 6px; }
+  .loading-overlay .progress-sub { font-size: 13px; color: var(--muted); }
+
+  /* KPI strip */
+  .kpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 0;
+    margin-bottom: 22px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--card);
+    overflow: hidden;
+  }
+  .kpi-card {
+    padding: 14px 18px;
+    border-right: 1px solid var(--border);
+    min-width: 0;
+  }
+  .kpi-card:last-child { border-right: none; }
+  .kpi-card .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .kpi-card .value { font-size: 21px; font-weight: 700; margin-top: 6px; color: var(--text); overflow-wrap: anywhere; }
+  .kpi-card .value.hero { font-size: 25px; }
+  .kpi-card .footnote { color: var(--muted); font-size: 11px; margin-top: 4px; }
+  .kpi-card.warn .value { color: var(--critical); }
+
+  /* Section headings (Portfolio Composition / By Location / Upcoming Renewals) */
+  .section-heading {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--text-2);
+    background: var(--gridline);
+    border-radius: 6px;
+    padding: 7px 12px;
+    margin-bottom: 12px;
+  }
+  .section-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  .columns-3 {
+    display: grid;
+    grid-template-columns: 1.15fr 1fr 1fr;
+    gap: 18px;
+    align-items: start;
+  }
+  @media (max-width: 1150px) { .columns-3 { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 14px;
+  }
+  .panel h2 { font-size: 12.5px; margin: 0 0 12px 0; color: var(--text); font-weight: 600; }
+  .panel h2 .count { color: var(--muted); font-weight: 400; }
+
+  /* Two-bar comparison row: a count bar + a balance bar per category */
+  .comp-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12px; }
+  .comp-row:last-child { margin-bottom: 0; }
+  .comp-label { width: 100px; flex-shrink: 0; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .comp-bars { flex: 1; display: flex; gap: 10px; min-width: 0; }
+  .comp-bar { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+  .comp-bar-track { flex: 1; height: 14px; background: var(--gridline); border-radius: 3px; overflow: hidden; min-width: 10px; }
+  .comp-bar-fill { height: 100%; border-radius: 3px; min-width: 2px; }
+  .comp-bar-fill.count { background: var(--navy); }
+  .comp-bar-fill.balance { background: var(--muted); opacity: 0.55; }
+  .comp-bar-text { font-size: 10.5px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+  .comp-legend { display: flex; gap: 16px; font-size: 10.5px; color: var(--muted); margin-bottom: 10px; }
+  .comp-legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .comp-legend i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+
+  .mini-kpis { display: flex; gap: 12px; margin-bottom: 14px; }
+  .mini-kpi { flex: 1; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; }
+  .mini-kpi .label { color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .mini-kpi .value { font-size: 19px; font-weight: 700; margin-top: 4px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+  th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; position: sticky; top: 0; background: var(--card); cursor: pointer; user-select: none; }
+  th.sortable:hover { color: var(--text); }
+  th .arrow { opacity: 0.5; margin-left: 3px; }
+  tr:hover td { background: rgba(128,128,128,0.06); }
+  tr.overdue td { color: var(--critical); }
+
+  .list-table { font-size: 11.5px; }
+  .list-table th, .list-table td { padding: 6px 8px; }
+  .list-table th { position: static; cursor: default; }
+  .scroll-panel { max-height: 320px; overflow: auto; }
+
+  /* Vertical bar chart (Renewals tab: loans/balance by month of maturity) */
+  .vbar-chart { display: flex; align-items: flex-end; gap: 6px; height: 130px; }
+  .vbar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 0; }
+  .vbar-value { font-size: 10px; color: var(--muted); margin-bottom: 3px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .vbar-track { width: 100%; max-width: 30px; flex: 1; display: flex; align-items: flex-end; }
+  .vbar-fill { width: 100%; border-radius: 3px 3px 0 0; min-height: 2px; }
+  .vbar-labels { display: flex; gap: 6px; margin-top: 6px; margin-bottom: 18px; }
+  .vbar-labels .vbar-col { justify-content: flex-start; height: auto; }
+  .vbar-label { font-size: 9.5px; color: var(--muted); text-align: center; line-height: 1.25; }
+  .vbar-label.today-ish { color: var(--critical); font-weight: 600; }
+
+  .filter-row { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+  .filter-row select {
+    padding: 7px 10px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--page); color: var(--text); font-size: 13px;
+  }
+  .group-header td { background: var(--gridline); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-2); }
+
+  .tabs { display: flex; gap: 2px; }
+  .tab-btn {
+    background: none; border: none; padding: 8px 14px; cursor: pointer;
+    border-radius: 6px; font-size: 13px; color: var(--muted);
+  }
+  .tab-btn.active { background: var(--text); color: var(--page); }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+  .table-wrap { max-height: 640px; overflow: auto; }
+  .empty-note { color: var(--muted); font-size: 13px; padding: 8px 0; }
+
+  .toolbar { display: flex; gap: 10px; margin-bottom: 14px; align-items: center; }
+  .toolbar input[type="search"] {
+    flex: 1; max-width: 320px; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--page); color: var(--text); font-size: 13px;
+  }
+  .toolbar .result-count { color: var(--muted); font-size: 12px; }
+
+  /* Map tab */
+  .map-wrap {
+    position: relative; border: 1px solid var(--border); border-radius: 10px;
+    overflow: hidden; height: 72vh; min-height: 480px; background: #e9ebe6;
+  }
+  #map-canvas { position: absolute; inset: 0; }
+  .leaflet-tile-pane { filter: saturate(0.85) brightness(1.03); }
+  .map-filters { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .map-filters .flabel { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; margin-right: 2px; }
+  .prov-chip {
+    appearance: none; border: 1px solid var(--border); background: var(--card);
+    color: var(--text); font-size: 12.5px; font-weight: 600; font-family: inherit;
+    padding: 6px 13px; border-radius: 999px; cursor: pointer; transition: all .15s ease;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .prov-chip .pdot { width: 7px; height: 7px; border-radius: 50%; }
+  .prov-chip:hover { background: var(--gridline); }
+  .prov-chip.active { background: var(--text); color: var(--page); border-color: var(--text); }
+  .prov-chip .pcount { font-weight: 500; opacity: 0.65; }
+  .map-note { color: var(--muted); font-size: 11.5px; margin-top: 8px; }
+  .map-legend-swatch { width: 9px; height: 9px; border-radius: 50%; background: #d9480f; opacity: 0.65; border: 1px solid rgba(180,50,10,0.8); display: inline-block; vertical-align: middle; margin-right: 5px; }
+  .leaflet-popup-content-wrapper { border-radius: 10px; }
+  .popup-city { font-weight: 700; font-size: 13px; margin-bottom: 3px; }
+  .popup-row { font-size: 12px; color: #444; line-height: 1.5; }
+  .popup-row b { color: #0b0b0b; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand">
+    <img src="{{ url_for('static', filename='logo.jpg') }}" alt="Shelter Lending" class="brand-logo">
+  </div>
+  <div class="topbar-tabs tabs">
+    <button class="tab-btn active" onclick="showTab('overview', this)">Portfolio Overview</button>
+    <button class="tab-btn" onclick="showTab('loans', this)">Loans</button>
+    <button class="tab-btn" onclick="showTab('renewals', this)">Renewals</button>
+    <button class="tab-btn" onclick="showTab('map', this)">Map</button>
+  </div>
+  <div class="topbar-right">
+    {% if fetched_at %}<div class="sub">Updated {{ fetched_at }}</div>{% endif %}
+    <button class="refresh" onclick="refresh()">Refresh</button>
+  </div>
+</div>
+
+<main>
+  {% if loading %}
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="spinner"></div>
+    <div class="progress-text" id="progressText">Connecting to Mortgage Automator...</div>
+    <div class="progress-sub" id="progressSub">This can take a few minutes for larger portfolios.</div>
+  </div>
+  {% endif %}
+
+  {% if error %}
+    <div class="error-box"><strong>Couldn't load data.</strong>{{ "\n" }}{{ error }}</div>
+  {% endif %}
+
+  {% if data %}
+  <div id="tab-overview" class="tab-content active">
+    <div class="page-title">
+      <h1>Portfolio Overview</h1>
+      <div class="sub">Key Performance Metrics &amp; Portfolio Health</div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi-card">
+        <div class="label">Fundings YTD</div>
+        <div class="value hero">${{ "{:,.0f}".format(data.kpis.fundings_ytd) }}</div>
+        <div class="footnote">{{ data.kpis.fundings_ytd_count }} loans funded this year</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">Active Loans</div>
+        <div class="value hero">{{ data.kpis.active_loans }}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">Current Loan Balance</div>
+        <div class="value hero">${{ "{:,.0f}".format(data.kpis.current_balance) }}</div>
+        <div class="footnote">${{ "{:,.0f}".format(data.kpis.avg_balance) }} avg current balance</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">Weighted Avg Rate</div>
+        <div class="value">{{ "%.2f"|format(data.kpis.wtd_avg_rate) ~ "%" if data.kpis.wtd_avg_rate is not none else "-" }}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">Portfolio LTV</div>
+        <div class="value">{{ "%.1f"|format(data.kpis.portfolio_ltv) ~ "%" if data.kpis.portfolio_ltv is not none else "-" }}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">Total Loans (all statuses)</div>
+        <div class="value">{{ data.kpis.total_loans }}</div>
+      </div>
+    </div>
+
+    <div class="columns-3">
+      <!-- Column 1: Portfolio Composition -->
+      <div>
+        <div class="section-heading"><span class="section-dot" style="background: var(--navy)"></span>Portfolio Composition</div>
+
+        {% macro comp_panel(title, rows, count_total, balance_total, note='') %}
+        <div class="panel">
+          <h2>{{ title }}{% if note %} <span class="count">({{ note }})</span>{% endif %}</h2>
+          <div class="comp-legend"><span><i style="background: var(--navy)"></i>Loans</span><span><i style="background: var(--muted); opacity:0.55"></i>Balance</span></div>
+          {% for row in rows %}
+          {% set pc = (row.count / count_total * 100) if count_total else 0 %}
+          {% set pb = (row.balance / balance_total * 100) if balance_total else 0 %}
+          <div class="comp-row">
+            <div class="comp-label">{{ row.label }}</div>
+            <div class="comp-bars">
+              <div class="comp-bar">
+                <div class="comp-bar-track"><div class="comp-bar-fill count" style="width: {{ pc }}%"></div></div>
+                <div class="comp-bar-text">{{ row.count }} ({{ "%.1f"|format(pc) }}%)</div>
+              </div>
+              <div class="comp-bar">
+                <div class="comp-bar-track"><div class="comp-bar-fill balance" style="width: {{ pb }}%"></div></div>
+                <div class="comp-bar-text">${{ "{:,.0f}".format(row.balance) }} ({{ "%.1f"|format(pb) }}%)</div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endmacro %}
+
+        {{ comp_panel("By Status", data.by_status, data.kpis.total_loans, data.by_status|sum(attribute='balance')) }}
+        {{ comp_panel("By Loan Position", data.by_position, data.kpis.active_loans, data.by_position|sum(attribute='balance'), "active loans") }}
+        {{ comp_panel("By LTV Band", data.by_ltv_band, data.kpis.active_loans, data.by_ltv_band|sum(attribute='balance'), "active loans") }}
+        {{ comp_panel("By Interest Rate Band", data.by_rate_band, data.kpis.active_loans, data.by_rate_band|sum(attribute='balance'), "active loans") }}
+        {{ comp_panel("By Property Type", data.by_property_type, data.kpis.active_loans, data.by_property_type|sum(attribute='balance'), "active loans") }}
+        {{ comp_panel("By Substatus", data.by_substatus, data.kpis.active_loans, data.by_substatus|sum(attribute='balance'), "active loans") }}
+      </div>
+
+      <!-- Column 2: By Location -->
+      <div>
+        <div class="section-heading"><span class="section-dot" style="background: var(--series-2)"></span>By Location</div>
+        <div class="panel">
+          <h2>Province, City <span class="count">(top 20, active loans)</span></h2>
+          <div class="comp-legend"><span><i style="background: var(--navy)"></i>Loans</span><span><i style="background: var(--muted); opacity:0.55"></i>Balance</span></div>
+          <div class="scroll-panel">
+            {% set loc_balance_total = data.by_location|sum(attribute='balance') %}
+            {% for row in data.by_location %}
+            {% set pc = (row.count / data.kpis.active_loans * 100) if data.kpis.active_loans else 0 %}
+            {% set pb = (row.balance / loc_balance_total * 100) if loc_balance_total else 0 %}
+            <div class="comp-row">
+              <div class="comp-label" style="width: 130px;">{{ row.label }}</div>
+              <div class="comp-bars">
+                <div class="comp-bar">
+                  <div class="comp-bar-track"><div class="comp-bar-fill count" style="width: {{ pc }}%"></div></div>
+                  <div class="comp-bar-text">{{ row.count }} ({{ "%.1f"|format(pc) }}%)</div>
+                </div>
+                <div class="comp-bar">
+                  <div class="comp-bar-track"><div class="comp-bar-fill balance" style="width: {{ pb }}%"></div></div>
+                  <div class="comp-bar-text">${{ "{:,.0f}".format(row.balance) }} ({{ "%.1f"|format(pb) }}%)</div>
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Column 3: Upcoming Renewals (stands in for the source dashboard's Overdue Payments -
+           this app doesn't pull payment-level data, so it surfaces maturities/renewals instead,
+           which is the data actually available from /loans/list) -->
+      <div>
+        <div class="section-heading"><span class="section-dot" style="background: var(--critical)"></span>Upcoming Renewals</div>
+        {% if not data.kpis.has_maturity_data %}
+        <div class="panel"><div class="empty-note">No maturity date field was found on these loans - check /debug/sample-loan and add the real field name to MATURITY_KEYS in data.py.</div></div>
+        {% else %}
+        <div class="mini-kpis">
+          <div class="mini-kpi">
+            <div class="label">Maturing in 90 Days</div>
+            <div class="value">{{ data.kpis.maturing_90d_count }}</div>
+          </div>
+          <div class="mini-kpi">
+            <div class="label">Balance</div>
+            <div class="value">${{ "{:,.0f}".format(data.kpis.maturing_90d_balance) }}</div>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>By Days to Maturity</h2>
+          <div class="comp-legend"><span><i style="background: var(--navy)"></i>Loans</span><span><i style="background: var(--muted); opacity:0.55"></i>Balance</span></div>
+          {% set mat_count_total = data.by_maturity_bucket|sum(attribute='count') %}
+          {% set mat_balance_total = data.by_maturity_bucket|sum(attribute='balance') %}
+          {% for row in data.by_maturity_bucket %}
+          {% set pc = (row.count / mat_count_total * 100) if mat_count_total else 0 %}
+          {% set pb = (row.balance / mat_balance_total * 100) if mat_balance_total else 0 %}
+          <div class="comp-row">
+            <div class="comp-label">{{ row.label }}</div>
+            <div class="comp-bars">
+              <div class="comp-bar">
+                <div class="comp-bar-track"><div class="comp-bar-fill" style="width: {{ pc }}%; background: {{ row.shade }}"></div></div>
+                <div class="comp-bar-text">{{ row.count }} ({{ "%.1f"|format(pc) }}%)</div>
+              </div>
+              <div class="comp-bar">
+                <div class="comp-bar-track"><div class="comp-bar-fill" style="width: {{ pb }}%; background: {{ row.shade }}; opacity: 0.55"></div></div>
+                <div class="comp-bar-text">${{ "{:,.0f}".format(row.balance) }} ({{ "%.1f"|format(pb) }}%)</div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="panel">
+          <h2>Renewals List <span class="count">(next 120 days)</span></h2>
+          {% if not data.upcoming_maturities %}
+          <div class="empty-note">Nothing maturing in the next 120 days.</div>
+          {% else %}
+          <div class="scroll-panel">
+            <table class="list-table">
+              <thead><tr><th>Loan #</th><th>Title</th><th>Maturity</th><th>Days</th><th>Balance</th></tr></thead>
+              <tbody>
+                {% for l in data.upcoming_maturities %}
+                <tr class="{{ 'overdue' if l.days_until < 0 else '' }}">
+                  <td>{{ l.loan_id }}</td>
+                  <td>{{ l.loan_title }}</td>
+                  <td>{{ l.maturity_date }}</td>
+                  <td>{{ l.days_until }}</td>
+                  <td>{{ "${:,.0f}".format(l.balance) if l.balance else "-" }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div id="tab-loans" class="tab-content">
+    <div class="page-title">
+      <h1>Loans</h1>
+      <div class="sub">{{ data.kpis.total_loans }} loans (In Progress + Funded)</div>
+    </div>
+    <div class="toolbar">
+      <input type="search" id="loanSearch" placeholder="Search loan #, title, city..." oninput="filterLoans()">
+      <span class="result-count" id="loanCount"></span>
+    </div>
+    <div class="panel table-wrap">
+      <table id="loansTable">
+        <thead>
+          <tr>
+            <th class="sortable" data-type="num">Loan #</th>
+            <th class="sortable" data-type="text">Title</th>
+            <th class="sortable" data-type="text">Status</th>
+            <th class="sortable" data-type="text">Position</th>
+            <th class="sortable" data-type="num">Balance</th>
+            <th class="sortable" data-type="num">Property Value</th>
+            <th class="sortable" data-type="num">LTV</th>
+            <th class="sortable" data-type="num">Interest</th>
+            <th class="sortable" data-type="text">City</th>
+            <th class="sortable" data-type="text">Province</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in data.loans %}
+          <tr>
+            <td>{{ l.loan_id }}</td>
+            <td>{{ l.loan_title }}</td>
+            <td>{{ l.status }}</td>
+            <td>{{ l.position }}</td>
+            <td data-sort="{{ l.balance or 0 }}">{{ "${:,.0f}".format(l.balance) if l.balance else "-" }}</td>
+            <td data-sort="{{ l.property_value or 0 }}">{{ "${:,.0f}".format(l.property_value) if l.property_value else "-" }}</td>
+            <td data-sort="{{ l.ltv or 0 }}">{{ l.ltv ~ "%" if l.ltv is not none else "-" }}</td>
+            <td data-sort="{{ l.interest_rate or 0 }}">{{ l.interest_rate ~ "%" if l.interest_rate is not none else "-" }}</td>
+            <td>{{ l.city or "-" }}</td>
+            <td>{{ l.province or "-" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="tab-renewals" class="tab-content">
+    <div class="page-title">
+      <h1>Renewals</h1>
+      <div class="sub">Maturity Date: overdue through the next 12 months &middot; Status: Funded</div>
+    </div>
+
+    {% if not data.kpis.has_maturity_data %}
+    <div class="panel"><div class="empty-note">No maturity date field was found on these loans - check /debug/sample-loan and add the real field name to MATURITY_KEYS in data.py.</div></div>
+    {% else %}
+    <div class="mini-kpis" style="max-width: 420px;">
+      <div class="mini-kpi">
+        <div class="label">Loans</div>
+        <div class="value">{{ data.kpis.renewals_count }}</div>
+      </div>
+      <div class="mini-kpi">
+        <div class="label">Current Balance</div>
+        <div class="value">${{ "{:,.0f}".format(data.kpis.renewals_balance) }}</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Loans by Month of Maturity</h2>
+      <div class="comp-legend"><span><i style="background: var(--navy)"></i>Loans</span></div>
+      {% set max_count = (data.renewals_by_month|max(attribute='count')).count if data.renewals_by_month else 1 %}
+      <div class="vbar-chart">
+        {% for row in data.renewals_by_month %}
+        <div class="vbar-col">
+          <div class="vbar-value">{{ row.count }}</div>
+          <div class="vbar-track"><div class="vbar-fill" style="height: {{ (row.count / max_count * 100) if max_count else 0 }}%; background: {{ row.shade }}"></div></div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="vbar-labels">
+        {% for row in data.renewals_by_month %}
+        <div class="vbar-col"><div class="vbar-label{{ ' today-ish' if row.label == 'Overdue' else '' }}">{{ row.label }}</div></div>
+        {% endfor %}
+      </div>
+
+      <h2>Balance by Month of Maturity</h2>
+      <div class="comp-legend"><span><i style="background: var(--muted); opacity:0.55"></i>Balance</span></div>
+      {% set max_balance = (data.renewals_by_month|max(attribute='balance')).balance if data.renewals_by_month else 1 %}
+      <div class="vbar-chart">
+        {% for row in data.renewals_by_month %}
+        <div class="vbar-col">
+          <div class="vbar-value">${{ "{:,.0f}".format(row.balance) }}</div>
+          <div class="vbar-track"><div class="vbar-fill" style="height: {{ (row.balance / max_balance * 100) if max_balance else 0 }}%; background: {{ row.shade }}; opacity: 0.55"></div></div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="vbar-labels">
+        {% for row in data.renewals_by_month %}
+        <div class="vbar-col"><div class="vbar-label{{ ' today-ish' if row.label == 'Overdue' else '' }}">{{ row.label }}</div></div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Renewals List <span class="count">({{ data.renewals_list|length }} loans, grouped by month of maturity)</span></h2>
+      <div class="filter-row">
+        <input type="search" id="renewalSearch" placeholder="Search loan #, title..." oninput="filterRenewals()">
+        <select id="renewalSubstatus" onchange="filterRenewals()">
+          <option value="">All substatuses</option>
+          {% for s in data.renewals_list|map(attribute='substatus')|unique|sort %}
+          <option value="{{ s }}">{{ s }}</option>
+          {% endfor %}
+        </select>
+        <span class="result-count" id="renewalCount"></span>
+      </div>
+      <div class="table-wrap" style="max-height: 640px;">
+        <table id="renewalsTable" class="list-table">
+          <thead>
+            <tr>
+              <th>Loan #</th><th>Title</th><th>Status</th><th>Substatus</th>
+              <th>Funding Date</th><th>Maturity Date</th><th>Days</th>
+              <th>Balance</th><th>Property Value</th><th>Existing Mtgs</th>
+              <th>Interest</th><th>Term</th><th>Mortgage Total</th><th>LTV</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% set ns = namespace(prev=None) %}
+            {% for l in data.renewals_list %}
+            {% if l.month_label != ns.prev %}
+            <tr class="group-header"><td colspan="14">{{ l.month_label }}</td></tr>
+            {% set ns.prev = l.month_label %}
+            {% endif %}
+            <tr class="{{ 'overdue' if l.days_until < 0 else '' }}" data-substatus="{{ l.substatus }}">
+              <td>{{ l.loan_id }}</td>
+              <td>{{ l.loan_title }}</td>
+              <td>{{ l.status }}</td>
+              <td>{{ l.substatus }}</td>
+              <td>{{ l.funding_date or "-" }}</td>
+              <td>{{ l.maturity_date }}</td>
+              <td>{{ l.days_until }}</td>
+              <td>{{ "${:,.0f}".format(l.balance) if l.balance else "-" }}</td>
+              <td>{{ "${:,.0f}".format(l.property_value) if l.property_value else "-" }}</td>
+              <td>{{ l.existing_mortgage_count if l.existing_mortgage_count is not none else "-" }}</td>
+              <td>{{ l.interest_rate ~ "%" if l.interest_rate is not none else "-" }}</td>
+              <td>{{ l.term_months or "-" }}</td>
+              <td>{{ "${:,.0f}".format(l.mortgage_total) if l.mortgage_total else "-" }}</td>
+              <td>{{ l.ltv ~ "%" if l.ltv is not none else "-" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div id="tab-map" class="tab-content">
+    <div class="page-title">
+      <h1>Map</h1>
+      <div class="sub">Funded loans by location &middot; each dot is one loan, scattered around its city</div>
+    </div>
+
+    <div class="mini-kpis">
+      <div class="mini-kpi">
+        <div class="label">Total Loan Amount</div>
+        <div class="value">${{ "{:,.0f}".format(data.kpis.current_balance) }}</div>
+      </div>
+      <div class="mini-kpi">
+        <div class="label">Average Loan Size</div>
+        <div class="value">${{ "{:,.0f}".format(data.kpis.avg_balance) }}</div>
+      </div>
+      <div class="mini-kpi">
+        <div class="label">Average LTV</div>
+        <div class="value">{{ "%.1f"|format(data.kpis.portfolio_ltv) ~ "%" if data.kpis.portfolio_ltv is not none else "-" }}</div>
+      </div>
+      <div class="mini-kpi">
+        <div class="label">Number of Loans</div>
+        <div class="value">{{ data.kpis.active_loans }}</div>
+      </div>
+    </div>
+
+    <div class="map-filters" id="mapFilters">
+      <span class="flabel">Province</span>
+      <button class="prov-chip active" data-prov="ALL">All <span class="pcount" id="mapcnt-ALL"></span></button>
+      <button class="prov-chip" data-prov="BC"><span class="pdot" style="background:#d9480f"></span>BC <span class="pcount" id="mapcnt-BC"></span></button>
+      <button class="prov-chip" data-prov="AB"><span class="pdot" style="background:#1c6fd1"></span>AB <span class="pcount" id="mapcnt-AB"></span></button>
+      <button class="prov-chip" data-prov="MB"><span class="pdot" style="background:#1a9e6b"></span>MB <span class="pcount" id="mapcnt-MB"></span></button>
+      <button class="prov-chip" data-prov="OTHER"><span class="pdot" style="background:#898781"></span>Other <span class="pcount" id="mapcnt-OTHER"></span></button>
+    </div>
+
+    <div class="map-wrap"><div id="map-canvas"></div></div>
+    <div class="map-note"><span class="map-legend-swatch"></span>Darker clusters mean more loans in that area. Loans whose city isn't in the location lookup aren't plotted (see note in the browser console).</div>
+  </div>
+  {% endif %}
+</main>
+
+<script>
+function showTab(name, btn) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'map') {
+    initMapTab();
+    if (window._leafletMap) setTimeout(() => window._leafletMap.invalidateSize(), 50);
+  }
+}
+
+// --- Map tab ------------------------------------------------------------
+// Lat/long lookup for cities seen in this account's loans (lowercase keys),
+// plus a handful of other common Western Canada places for resilience as
+// the book grows. A loan whose city isn't in here is skipped (and counted
+// in the console warning) rather than guessed at.
+const CITY_COORDS = {"edmonton":[53.5461,-113.4938,"AB"],"vernon":[50.2638,-119.2719,"BC"],"calgary":[51.0447,-114.0719,"AB"],"stony plain":[53.5253,-114.0046,"AB"],"kamloops":[50.6745,-120.3273,"BC"],"kelowna":[49.888,-119.496,"BC"],"west kelowna":[49.86,-119.601,"BC"],"cowichan bay":[48.739,-123.618,"BC"],"coaldale":[49.7334,-112.6186,"AB"],"kimberley":[49.6676,-115.9775,"BC"],"port alberni":[49.2339,-124.8055,"BC"],"burnaby":[49.2488,-122.9805,"BC"],"penticton":[49.4991,-119.5937,"BC"],"langley":[49.1042,-122.6604,"BC"],"airdrie":[51.2917,-114.0144,"AB"],"armstrong":[50.4506,-119.199,"BC"],"winnipeg":[49.8951,-97.1384,"MB"],"westbank":[49.826,-119.646,"BC"],"big white":[49.7238,-118.9339,"BC"],"brandon":[49.8485,-99.9501,"MB"],"dawson creek":[55.7596,-120.2377,"BC"],"pincher creek":[49.4802,-113.9531,"AB"],"nanaimo":[49.1659,-123.9401,"BC"],"grande prairie":[55.1707,-118.7947,"AB"],"cold lake":[54.4642,-110.1824,"AB"],"vanderhoof":[54.0162,-124.0161,"BC"],"langford":[48.4474,-123.5041,"BC"],"qualicum beach":[49.3496,-124.4486,"BC"],"nanoose bay":[49.2613,-124.1569,"BC"],"maple ridge":[49.2193,-122.6019,"BC"],"lake country":[50.091,-119.416,"BC"],"victoria":[48.4284,-123.3656,"BC"],"okotoks":[50.7256,-113.9751,"AB"],"surrey":[49.1913,-122.849,"BC"],"merritt":[50.1121,-120.7862,"BC"],"lethbridge":[49.6956,-112.8451,"AB"],"richmond":[49.1666,-123.1336,"BC"],"chestermere":[51.0501,-113.8223,"AB"],"langley twp":[49.12,-122.61,"BC"],"invermere":[50.5064,-116.0286,"BC"],"quesnel":[52.9784,-122.4933,"BC"],"clairmont":[55.2273,-118.8347,"AB"],"delta":[49.0847,-123.0587,"BC"],"bowser":[49.4267,-124.688,"BC"],"cochrane":[51.1892,-114.4675,"AB"],"lumby":[50.2516,-118.9676,"BC"],"eagle bay":[50.8961,-119.3933,"BC"],"salmon arm":[50.7001,-119.2838,"BC"],"summerland":[49.6008,-119.6768,"BC"],"abbotsford":[49.0504,-122.3045,"BC"],"vancouver":[49.2827,-123.1207,"BC"],"prince george":[53.9171,-122.7497,"BC"],"blackfalds":[52.3835,-113.7943,"AB"],"agassiz":[49.2334,-121.7678,"BC"],"prince rupert":[54.315,-130.3208,"BC"],"sherwood park":[53.5412,-113.3181,"AB"],"new westminster":[49.2057,-122.911,"BC"],"chilliwack":[49.1579,-121.9514,"BC"],"osoyoos":[49.0325,-119.4686,"BC"],"strathmore":[51.0392,-113.3955,"AB"],"sylvan lake":[52.3083,-114.0989,"AB"],"red deer":[52.2681,-113.8112,"AB"],"enderby":[50.552,-119.143,"BC"],"medicine hat":[50.0405,-110.6764,"AB"],"saanichton":[48.5934,-123.4181,"BC"],"oak bluff":[49.7497,-97.3303,"MB"],"castlegar":[49.3236,-117.6652,"BC"],"strathcona county":[53.5222,-113.1858,"AB"],"drayton valley":[53.2184,-114.985,"AB"],"campbell river":[50.0163,-125.2446,"BC"],"north vancouver":[49.32,-123.0724,"BC"],"revelstoke":[50.9981,-118.1957,"BC"],"port moody":[49.2838,-122.8324,"BC"],"headingley":[49.8744,-97.4066,"MB"],"diamond valley":[50.6422,-114.2378,"AB"],"west vancouver":[49.3287,-123.159,"BC"],"mission":[49.1335,-122.3094,"BC"],"100 mile house":[51.6449,-121.2963,"BC"],"gambier island":[49.4821,-123.3734,"BC"],"spruce grove":[53.5452,-113.9199,"AB"],"kootenay boundary e":[49.1,-118.2,"BC"],"oliver":[49.1823,-119.5509,"BC"],"powell river":[49.8351,-124.5247,"BC"],"kitimat":[54.0547,-128.6534,"BC"],"keremeos":[49.2013,-119.837,"BC"],"duncan":[48.7787,-123.7079,"BC"],"blind bay":[50.943,-119.301,"BC"],"scotch creek":[50.95,-119.33,"BC"],"coquitlam":[49.2838,-122.7932,"BC"],"anmore":[49.3167,-122.85,"BC"],"halfmoon bay":[49.5167,-123.9183,"BC"],"brentwood bay":[48.5729,-123.4631,"BC"],"port coquitlam":[49.2621,-122.7816,"BC"],"sechelt":[49.4742,-123.7556,"BC"],"lake cowichan":[48.8251,-124.0531,"BC"],"parkland county":[53.5932,-114.0018,"AB"],"east saint paul":[49.985,-97.033,"MB"],"sidney":[48.6504,-123.3982,"BC"],"sooke":[48.3744,-123.7269,"BC"],"dunmore":[50.0084,-110.5083,"AB"],"niverville":[49.6064,-97.0394,"MB"],"olds":[51.7907,-114.1066,"AB"],"high river":[50.5825,-113.8656,"AB"],"tsawwassen":[49.0168,-123.087,"BC"],"golden":[51.2963,-116.9631,"BC"],"rocky view county":[51.15,-113.95,"AB"],"regina":[50.4452,-104.6189,"SK"],"saskatoon":[52.1332,-106.67,"SK"],"moose jaw":[50.3933,-105.5519,"SK"],"nelson":[49.4928,-117.2948,"BC"],"cranbrook":[49.5097,-115.769,"BC"],"fernie":[49.5041,-115.0631,"BC"],"squamish":[49.7016,-123.1558,"BC"],"whistler":[50.1163,-122.9574,"BC"],"fort mcmurray":[56.7267,-111.379,"AB"],"st albert":[53.6303,-113.6256,"AB"],"leduc":[53.2594,-113.5492,"AB"],"camrose":[53.0171,-112.8362,"AB"],"portage la prairie":[49.9725,-98.2926,"MB"],"steinbach":[49.5258,-96.6841,"MB"]};
+const PROV_COLOR = { BC: "#d9480f", AB: "#1c6fd1", MB: "#1a9e6b", SK: "#9b51c9" };
+const OTHER_COLOR = "#898781";
+
+function buildMapPoints() {
+  const loans = ({{ data.loans | tojson if data else '[]' }}).filter(l => l.status === 'Funded');
+  const byCity = {};
+  for (const l of loans) {
+    const city = (l.city || '').trim();
+    const key = city.toLowerCase();
+    if (!city || !CITY_COORDS[key]) continue;
+    if (!byCity[key]) byCity[key] = { city, count: 0, balance: 0 };
+    byCity[key].count += 1;
+    byCity[key].balance += (l.balance || 0);
+  }
+  const skipped = loans.length - Object.values(byCity).reduce((s, c) => s + c.count, 0);
+  if (skipped > 0) console.warn(`Map tab: ${skipped} funded loan(s) skipped - city not in CITY_COORDS lookup.`);
+
+  const points = [];
+  const provTotals = {};
+  for (const key in byCity) {
+    const [lat, lon, prov] = CITY_COORDS[key];
+    const info = byCity[key];
+    provTotals[prov] = provTotals[prov] || { count: 0, balance: 0 };
+    provTotals[prov].count += info.count;
+    provTotals[prov].balance += info.balance;
+    const n = info.count;
+    const radiusDeg = Math.min(0.012 + 0.0035 * Math.sqrt(n), 0.08);
+    const lonScale = 1 / Math.cos(lat * Math.PI / 180);
+    for (let i = 0; i < n; i++) {
+      const ang = Math.random() * 2 * Math.PI;
+      const r = radiusDeg * Math.sqrt(Math.random());
+      points.push({
+        lat: lat + r * Math.sin(ang),
+        lon: lon + r * Math.cos(ang) * lonScale,
+        city: info.city, prov: prov || 'OTHER',
+        cityCount: info.count, cityBalance: info.balance,
+      });
+    }
+  }
+  return { points, provTotals, totalLoans: loans.length };
+}
+
+function fmtMoneyMap(n) { return '$' + Math.round(n).toLocaleString('en-US'); }
+
+let _mapInitDone = false;
+function initMapTab() {
+  if (_mapInitDone) return;
+  _mapInitDone = true;
+  const { points, provTotals } = buildMapPoints();
+
+  for (const p of ['ALL', 'BC', 'AB', 'MB', 'OTHER']) {
+    const el = document.getElementById('mapcnt-' + p);
+    if (!el) continue;
+    if (p === 'ALL') { el.textContent = '(' + points.length + ')'; continue; }
+    el.textContent = '(' + (provTotals[p] ? provTotals[p].count : 0) + ')';
+  }
+
+  // Canada's rough bounding box - keeps the map from panning/zooming out to
+  // show the rest of the world, without hard-restricting the view to just
+  // the Western provinces where the portfolio happens to sit today.
+  const CANADA_BOUNDS = [[41.0, -141.5], [83.5, -51.5]];
+  const map = L.map('map-canvas', {
+    zoomControl: true,
+    maxBounds: CANADA_BOUNDS,
+    maxBoundsViscosity: 0.8,
+    minZoom: 3,
+  }).setView([54.5, -116.5], 5);
+  window._leafletMap = map;
+  // Standard OpenStreetMap tiles - genuinely free, no API key/account needed
+  // (unlike CARTO's basemap service, which now requires one even for its
+  // previously-free styles - that's why the map was showing "API KEY
+  // REQUIRED" tiles instead of an actual map).
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, minZoom: 3, subdomains: 'abc',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    noWrap: true,
+  }).addTo(map);
+
+  const markers = [];
+  for (const pt of points) {
+    const color = PROV_COLOR[pt.prov] || OTHER_COLOR;
+    const m = L.circleMarker([pt.lat, pt.lon], {
+      radius: 4, weight: 1, color: color, opacity: 0.85, fillColor: color, fillOpacity: 0.45,
+    });
+    m.bindPopup(
+      '<div class="popup-city">' + pt.city + '</div>' +
+      '<div class="popup-row"><b>' + pt.cityCount + '</b> loan' + (pt.cityCount === 1 ? '' : 's') + ' in this area</div>' +
+      '<div class="popup-row">Combined balance: <b>' + fmtMoneyMap(pt.cityBalance) + '</b></div>'
+    );
+    m.prov = pt.prov;
+    m.addTo(map);
+    markers.push(m);
+  }
+
+  document.querySelectorAll('.prov-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.prov-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      const prov = chip.getAttribute('data-prov');
+      markers.forEach(m => {
+        const show = (prov === 'ALL' || m.prov === prov);
+        const el = m.getElement();
+        if (el) el.style.display = show ? '' : 'none';
+      });
+    });
+  });
+}
+
+let pollTimer = null;
+
+function pollProgress() {
+  fetch('/api/progress').then(r => r.json()).then(p => {
+    const textEl = document.getElementById('progressText');
+    const subEl = document.getElementById('progressSub');
+    if (textEl) textEl.textContent = p.message || 'Working...';
+    if (subEl) subEl.textContent = p.loans_fetched ? `${p.loans_fetched} loans fetched so far` : '';
+    if (p.done) {
+      clearInterval(pollTimer);
+      window.location.reload();
+    }
+  }).catch(() => {});
+}
+
+async function refresh() {
+  const btn = document.querySelector('button.refresh');
+  btn.textContent = 'Refreshing...';
+  btn.disabled = true;
+  await fetch('/api/refresh', { method: 'POST' });
+  window.location.reload();
+}
+
+function filterLoans() {
+  const q = document.getElementById('loanSearch').value.trim().toLowerCase();
+  const rows = document.querySelectorAll('#loansTable tbody tr');
+  let shown = 0;
+  rows.forEach(row => {
+    const match = !q || row.textContent.toLowerCase().includes(q);
+    row.style.display = match ? '' : 'none';
+    if (match) shown++;
+  });
+  const countEl = document.getElementById('loanCount');
+  if (countEl) countEl.textContent = `${shown} of ${rows.length} loans`;
+}
+
+(function setupSortableTable() {
+  const table = document.getElementById('loansTable');
+  if (!table) return;
+  const headers = table.querySelectorAll('th.sortable');
+  let sortState = { index: null, asc: true };
+  headers.forEach((th, index) => {
+    th.addEventListener('click', () => {
+      const type = th.dataset.type;
+      const tbody = table.querySelector('tbody');
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      const asc = sortState.index === index ? !sortState.asc : true;
+      sortState = { index, asc };
+      headers.forEach(h => h.querySelector('.arrow') && h.querySelector('.arrow').remove());
+      const arrow = document.createElement('span');
+      arrow.className = 'arrow';
+      arrow.textContent = asc ? '↑' : '↓';
+      th.appendChild(arrow);
+      rows.sort((a, b) => {
+        const cellA = a.children[index];
+        const cellB = b.children[index];
+        let va, vb;
+        if (type === 'num') {
+          va = parseFloat(cellA.dataset.sort ?? cellA.textContent.replace(/[^0-9.-]/g, '')) || 0;
+          vb = parseFloat(cellB.dataset.sort ?? cellB.textContent.replace(/[^0-9.-]/g, '')) || 0;
+        } else {
+          va = cellA.textContent.trim().toLowerCase();
+          vb = cellB.textContent.trim().toLowerCase();
+        }
+        if (va < vb) return asc ? -1 : 1;
+        if (va > vb) return asc ? 1 : -1;
+        return 0;
+      });
+      rows.forEach(row => tbody.appendChild(row));
+    });
+  });
+})();
+
+function filterRenewals() {
+  const q = document.getElementById('renewalSearch').value.trim().toLowerCase();
+  const substatusSel = document.getElementById('renewalSubstatus');
+  const substatus = substatusSel ? substatusSel.value : '';
+  const rows = document.querySelectorAll('#renewalsTable tbody tr');
+  let shown = 0;
+  let groupHasVisibleRow = false;
+  let lastGroupRow = null;
+  rows.forEach(row => {
+    if (row.classList.contains('group-header')) {
+      if (lastGroupRow && !groupHasVisibleRow) lastGroupRow.style.display = 'none';
+      lastGroupRow = row;
+      groupHasVisibleRow = false;
+      row.style.display = '';
+      return;
+    }
+    const matchQ = !q || row.textContent.toLowerCase().includes(q);
+    const matchS = !substatus || row.dataset.substatus === substatus;
+    const match = matchQ && matchS;
+    row.style.display = match ? '' : 'none';
+    if (match) { shown++; groupHasVisibleRow = true; }
+  });
+  if (lastGroupRow && !groupHasVisibleRow) lastGroupRow.style.display = 'none';
+  const countEl = document.getElementById('renewalCount');
+  const total = Array.from(rows).filter(r => !r.classList.contains('group-header')).length;
+  if (countEl) countEl.textContent = `${shown} of ${total} loans`;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  filterLoans();
+  if (document.getElementById('renewalsTable')) filterRenewals();
+});
+
+{% if loading %}
+pollTimer = setInterval(pollProgress, 1200);
+pollProgress();
+{% endif %}
+</script>
+</body>
+</html>
